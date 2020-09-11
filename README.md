@@ -19,9 +19,7 @@ If the dataset you pass to `encode` has been normalized using URDNA2015, you can
 
 Piece Quads uses techniques that are largely orthogonal to generic string compression. This means that piece-encoded datasets themselves compress well under deflate, gzip, brotli, etc.
 
-On its own, you should expect a piece-encoded dataset to be around 8-15% the size of its normalized n-quads format. Applying deflate or brotli over the piece-encoded dataset should get you down to 0.5-2% the original size.
-
-For reference, simply gzipping a normalized n-quads file will give you something around 3-5%.
+On its own, you should expect a piece-encoded dataset to be around 8-15% the size of its normalized n-quads format. Applying deflate or brotli over the piece-encoded dataset should get you down to 0.5-2% the original size. For reference, simply gzipping a normalized n-quads file will give you something around 3-4%; piece-encoding will save 2-3x on top of this.
 
 ## Design
 
