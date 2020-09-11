@@ -5,12 +5,12 @@ Piece Quads is a highly compressed RDF dataset format that is _complementary_ to
 ## API
 
 ```typescript
-export function encode(dataset: RDF.BaseQuad[]): Buffer
+export function encode(dataset: RDF.BaseQuad[]): Buffer {}
 export function decode(
 	data: Buffer,
 	DataFactory: RDF.DataFactory<RDF.BaseQuad, RDF.BaseQuad>,
 	options?: { isNormalized?: boolean }
-): RDF.BaseQuad[]
+): RDF.BaseQuad[] {}
 ```
 
 If the dataset you pass to `encode` has been normalized using URDNA2015, you can decode it using `{ isNormalized: true }` to preserve blank node labels and quad ordering.
