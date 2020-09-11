@@ -1,0 +1,29 @@
+{
+	"name": "piece-quads",
+	"version": "0.0.1",
+	"description": "",
+	"type": "module",
+	"main": "lib/index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/joeltg/piece-quads.git"
+	},
+	"author": "Joel Gustafson",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/joeltg/piece-quads/issues"
+	},
+	"homepage": "https://github.com/joeltg/piece-quads#readme",
+	"dependencies": {
+		"@types/rdf-js": "^4.0.0",
+		"@types/varint": "^5.0.0",
+		"buffer": "^5.6.0",
+		"varint": "^5.0.0"
+	},
+	"devDependencies": {
+		"n3": "^1.6.3"
+	}
+}
