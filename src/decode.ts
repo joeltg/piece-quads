@@ -2,6 +2,7 @@ import RDF from "rdf-js"
 import varint from "varint"
 
 import decodeHeader from "./decodeHeader.js"
+import { sortTuples, version } from "./utils.js"
 
 type Q = [number, number, number, number]
 
@@ -11,69 +12,85 @@ export default function decode(
 	options?: { isNormalized?: boolean }
 ): RDF.BaseQuad[] {
 	const isNormalized = !!options?.isNormalized
-	const headerLength = varint.decode(data)
-	let offset = varint.encodingLength(headerLength)
-	const headerBuffer = data.slice(offset, offset + headerLength)
-	const header = decodeHeader(headerBuffer, DataFactory, isNormalized)
-	offset += headerLength
-	const total = varint.decode(data, offset)
-	offset += varint.encodingLength(total)
-	const unpacked = Array.from(
-		unpack(data, offset, [NaN, NaN, NaN, NaN], 4, total)
-	)
-	if (isNormalized) {
-		unpacked.sort(sortQuads)
+
+	const v = varint.decode(data)
+	if (v !== version) {
+		throw new Error(`Invalid version number ${v}`)
 	}
-	return unpacked.map((quad) => toQuad(quad, DataFactory, header))
+	let offset = varint.encodingLength(v)
+	const result = decodeHeader(data, offset, DataFactory, isNormalized)
+	offset = result.offset
+
+	const quads = Array.from(unpack(data, offset, [], [], Infinity))
+	if (isNormalized) {
+		quads.sort(sortTuples)
+	}
+
+	const header = [...result.NamedNode, ...result.Literal, ...result.BlankNode]
+	return quads.map((quad) => toQuad(quad, DataFactory, header))
 }
 
 function* unpack(
 	data: Buffer,
 	offset: number,
-	pivots: Q,
-	depth: number,
+	trace: number[],
+	values: number[],
 	total: number
 ): Generator<Q, number, undefined> {
+	const mod = 4 - trace.length
 	let yieldCount = 0
-	if (depth > 1) {
+	if (trace.length < 3) {
 		let token = varint.decode(data, offset)
 		offset += varint.encodingLength(token)
 		while (token !== 0) {
-			const position = token % 4
-			const count = (token - position) / 4
+			const position = token % mod
+			const count = (token - position) / mod
 			yieldCount += count
 			const id = varint.decode(data, offset)
 			offset += varint.encodingLength(id)
-			pivots[position] = id
-			offset = yield* unpack(data, offset, pivots, depth - 1, count)
 
-			pivots[position] = NaN
+			trace.push(position)
+			values.push(id)
+			offset = yield* unpack(data, offset, trace, values, count)
+			values.pop()
+			trace.pop()
 			token = varint.decode(data, offset)
 			offset += varint.encodingLength(token)
 		}
 	}
 
-	const previous: Q = [0, 0, 0, 0]
+	const previous: number[] = new Array(mod).fill(0)
 	for (; yieldCount < total && offset < data.length; yieldCount++) {
-		const q = new Array(4) as Q
 		let same = true
-		for (const [i, t] of pivots.entries()) {
-			if (isNaN(t)) {
-				q[i] = varint.decode(data, offset)
-				offset += varint.encodingLength(q[i])
-				if (same) {
-					same = q[i] === 0
-					q[i] += previous[i]
-				}
-				previous[i] = q[i]
-			} else {
-				q[i] = t
-			}
+		const tuple: number[] = new Array(mod).fill(0)
+		for (const [i, p] of previous.entries()) {
+			const delta = varint.decode(data, offset)
+			offset += varint.encodingLength(delta)
+			tuple[i] = same ? p + delta : delta
+			previous[i] = tuple[i]
+			same = same && delta === 0
 		}
-		yield q
+		unProject(tuple, trace, values)
+		yield tuple as Q
 	}
 
 	return offset
+}
+
+function unProject(tuple: number[], trace: number[], values: number[]) {
+	while (tuple.length < 4) {
+		const i = 4 - tuple.length - 1
+		const value = values[i]
+		const position = trace[i]
+		if (position === tuple.length) {
+			tuple.push(value)
+		} else {
+			for (let j = 0; j < position; j++) {
+				tuple.unshift(tuple.pop()!)
+			}
+			tuple.splice(position, 0, value)
+		}
+	}
 }
 
 function toQuad(
@@ -95,20 +112,4 @@ function toTerm(
 	header: RDF.Term[]
 ) {
 	return term === 0 ? DataFactory.defaultGraph() : header[term - 1]
-}
-
-function sortQuads(a: Q, b: Q) {
-	if (a[0] === b[0]) {
-		if (a[1] === b[1]) {
-			if (a[2] === b[2]) {
-				return a[3] < b[3] ? -1 : 1
-			} else {
-				return a[2] < b[2] ? -1 : 1
-			}
-		} else {
-			return a[1] < b[1] ? -1 : 1
-		}
-	} else {
-		return a[0] < b[0] ? -1 : 1
-	}
 }

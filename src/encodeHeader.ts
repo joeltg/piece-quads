@@ -4,53 +4,65 @@ import varint from "varint"
 
 export const xsdString = "http://www.w3.org/2001/XMLSchema#string"
 
-export default function encodeHeader(terms: RDF.Term[]): Buffer {
+/**
+ *
+ * @param {Object} terms - The sorted array of terms
+ */
+export default function encodeHeader(
+	namedNodes: RDF.NamedNode[],
+	literals: RDF.Literal[],
+	blankNodeCount: number
+): Buffer {
 	const encoder = new TextEncoder()
 
 	const namedNodeIndices: Map<string, number> = new Map()
-	let i = NaN
-	for (const [index, term] of terms.entries()) {
-		if (isNaN(i) && term.termType === "BlankNode") {
-			i = index
-		} else if (term.termType === "NamedNode") {
-			namedNodeIndices.set(term.value, index + 1)
-		}
+	for (const [index, term] of namedNodes.entries()) {
+		namedNodeIndices.set(term.value, index)
 	}
 
-	const header: Uint8Array[] = [
-		Uint8Array.from(isNaN(i) ? [0] : varint.encode(terms.length - i)),
-	]
+	const header: Uint8Array[] = []
 
-	for (const term of terms) {
-		if (term.termType === "NamedNode") {
-			header.push(
-				Uint8Array.from(varint.encode(term.value.length * 2 + 1)),
-				encoder.encode(term.value)
-			)
-		} else if (term.termType === "BlankNode") {
-			break
-		} else if (term.termType === "Literal") {
-			const data = encoder.encode(term.value)
-			header.push(Uint8Array.from(varint.encode(data.length * 2)), data)
-			if (term.language !== "") {
-				header.push(
-					Uint8Array.from(varint.encode(term.language.length * 2 + 1)),
-					encoder.encode(term.language)
-				)
-			} else if (term.datatype.value !== xsdString) {
-				const index = namedNodeIndices.get(term.datatype.value)
-				if (index === undefined) {
-					throw new Error(
-						`Could not find named node ${term.datatype.value} in header`
-					)
-				}
-				header.push(Uint8Array.from(varint.encode(index * 2)))
-			} else {
-				header.push(Uint8Array.from(varint.encode(0)))
+	for (const { value } of namedNodes) {
+		header.push(
+			new Uint8Array(varint.encode(value.length)),
+			encoder.encode(value)
+		)
+	}
+
+	header.push(new Uint8Array([0]))
+
+	for (const literal of literals) {
+		if (literal.datatype.value === xsdString) {
+			header.push(new Uint8Array([1]))
+		} else if (literal.language !== "") {
+			if (literal.language.length < 2) {
+				throw new Error(`Invalid literal language tag: ${literal.language}`)
 			}
+			const token = literal.language.length * 2 - 1
+			header.push(
+				new Uint8Array(varint.encode(token)),
+				encoder.encode(literal.language)
+			)
 		} else {
-			throw new Error(`Invalid header term ${term}`)
+			const index = namedNodeIndices.get(literal.datatype.value)
+			if (index === undefined) {
+				throw new Error(
+					`Could not find literal datatype in named node array: ${literal.datatype.value}`
+				)
+			}
+			const token = (index + 1) * 2
+			header.push(new Uint8Array(varint.encode(token)))
 		}
+
+		header.push(
+			new Uint8Array(varint.encode(literal.value.length)),
+			encoder.encode(literal.value)
+		)
 	}
+
+	header.push(
+		new Uint8Array([0]),
+		new Uint8Array(varint.encode(blankNodeCount))
+	)
 	return Buffer.concat(header)
 }
