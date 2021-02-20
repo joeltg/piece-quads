@@ -111,7 +111,22 @@ The entire header section is organized so that all the terms have indices in lex
 
 ## Body
 
-Given an encoded header, we can now represent terms as header indices. In the body, **header indices are always 1-indexed**, i.e. the uvarint `1` deferences to the first term in the header, and the uvarint `0` is used to represent the default graph term.
+Given an encoded header, we can now represent terms as header indices, and quads as 4-tuples of uvarints. In the body, **header indices are always 1-indexed**, i.e. the uvarint `1` deferences to the first term in the header, and the uvarint `0` is used to represent the default graph term.
+
+We can represent an entire dataset as list of these 4-tuples:
+
+```
+[ 20  2  1 83 ]
+[ 40  2  1  0 ]
+[ 40  9 55 83 ]
+[ 99 12  1  0 ]
+[ 99 12  4  0 ]
+  ...
+```
+
+... where tuple component is a header term index (starting at 1), or, if the value is greater than the number of terms in the header, a blank node identifier. Each tuple is a quad, the first component is the subject, the second is the predicate, the third is the object, and the last is the graph term.
+
+
 
 ### Piece tree
 
@@ -151,9 +166,43 @@ meta | value | 1-tuples |
 -------------------------
 ```
 
-#### N-tuples
+### N-tuples
 
 Every quad in the dataset is eventually encoded as an _n_-tuple in an _n_-piece. Some quads will be encoded as 4-tuples at the root level, others will be buried as 1-tuples inside 1-pieces inside 2-pieces inside 3-pieces.
+
+n-tuples in n-piece are always listed in _ascending cartesian order_ and are always _delta-encoded_.
+
+#### Ascending cartesian order
+
+Ascending cartesian order means the first component of each tuple monotonically increases, and for tuples with the same value in their first component, the second component monotonically increases, and for tuples with the same values in their first and second components, the third component monotonically increases, and so on.
+
+These 4-tuples are sorted in ascending cartesian order:
+
+```
+[ 20  2  1 83 ]
+[ 40  2  1  0 ]
+[ 40  9 55 83 ]
+[ 99 12  1  0 ]
+[ 99 12  4  0 ]
+  ...
+```
+
+since `20 <= 40 <= 40 <= 99 <= 99` (subject column), `2 <= 9` (predicate column, for the two rows with subject `40`), and `1 <= 4` (for the two rows with subject `99` and predicate `12`).
+
+#### Delta-encoding
+
+Instead of directly encoding header indices, we instead encode _deltas_ of indices. For example, the previous matrix of indices encodes to this matrix of deltas:
+
+```
+[ 20  2  1 83 ]
+[ 20  2  1  0 ]
+[  0  7 55 83 ]
+[ 59 12  1  0 ]
+[  0  0  3  0 ]
+  ...
+```
+
+This technique is called _delta encoding_, and it saves space by projecting the values onto smaller uvarint ranges. This is especially effective in lower leaf pieces.
 
 ### Rotating positions
 
@@ -167,56 +216,20 @@ But then what if we find that this quad actually belongs to a child 2-piece with
 
 A function that does this rotation for us is `f(x, y, n) = (y + n - x) % (n + 1)`.
 
+### Re-sorting
+
+Every time we go down a level in the piece tree, we have to re-sort our set of tuples to be encoded. Eliminating a component from a set of tuples necessarily changes their cartesian order. This means that the tuples "start" in regular lexicographic order at the root of the tree (the same ordering used to sort URNDA2015-normalized datasets), but this order is not preserved beyond the root.
+
+
+
 
 
 Each _(4-d)_-piece at depth _d_ encodes a subset of the quads in the dataset that have _d_ terms in common. For example, each 3-piece
 
-Given its encoded header, a dataset can now be represented as a `4 x m` matrix of uvarint indices:
 
-```
-20  2  1 83
-40  2  1  0
-40  9 55 83
-99 12  1  0
-99 12  4  0
-        ...
-```
-
-where each entry is a header term index, or, if the entry is greater than or equal to the number of terms in the header, a blank node identifier. Each row is a quad, the first column is the subjects, the second is the predicates, the third is the objects, and the last is the graph terms.
-
-Quads in n-piece are always listed in ascending cartesian order and are always delta-encoded.
-
-### Lexicographic order
-
-Ascending cartesian order means the first column monotonically increases, and for rows with the same entry in the first column, the second column monotonically increases, and for rows with the same entries in their first and second columns, the third column monotonically increases, and so on.
-
-This matrix is sorted:
-
-```
-20  2  1 83
-40  2  1  0
-40  9 55 83
-99 12  1  0
-99 12  4  0
-        ...
-```
-
-since `20 <= 40 <= 40 <= 99 <= 99` (subject column), `2 <= 9` (predicate column, for the two rows with subject `40`), and `1 <= 4` (for the two rows with subject `99` and predicate `12`).
 
 ### Delta encoding
 
-Instead of directly encoding header indices, we actually encode _deltas_ of indices, like this:
-
-```
-20  2  1 83
-20  2  1  0
- 0  7 55 83
-59 12  1  0
- 0  0  3  0
-        ...
-```
-
-Especially with uvarints, this ends up saving lots of space.
 
 #### Piece encoding
 
@@ -272,7 +285,7 @@ After the zero or more 2-pieces in a 3-piece, the "end" of the 2-pieces is indic
 
 Similarly, after the zero or more 3-pieces in a 4-piece, the "end" of the 3-pieces is indicated by a serialized zero byte. And again, since the total number of quads `s` in the 4-piece is known, we can subtract `s` from the total number of quads found in all 3-pieces to get the number of "remaining" quads, which are serialized in 3-tuples of uvarint header indices, delta encoded, without delimiter or end marker.
 
-The body consists of zero or more 4-pieces, followed by a zero byte, followed by zero or more delta-encoded 4-tuple quads that don't fit into any piece.
+The body consists of zero or more 3-pieces, followed by a zero byte, followed by zero or more delta-encoded 4-tuple quads that weren't contained in any of the 3-pieces.
 
 ## Notes on canonicalization
 
