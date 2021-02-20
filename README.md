@@ -27,7 +27,7 @@ The encoding scheme doesn't preference any one quad position over any other, and
 
 ## File extension
 
-Use the `.np` extension if you need to.
+Use the `.pq` extension if you need to.
 
 n-piece is heavily inspired by [ZDAG](https://github.com/mikeal/ZDAG/).
 
@@ -39,13 +39,13 @@ n-piece is heavily inspired by [ZDAG](https://github.com/mikeal/ZDAG/).
 ---------------------------
 ```
 
-This spec is written primarily from the perspective of a decoder, with an extra at the end for encoder-specific notes.
+This spec is written primarily from the perspective of a decoder, with an extra note at the end for encoder-specific concerns.
 
-n-piece uses unsigned varints extensively using the same encoding as the [`encoding/binary` package](https://golang.org/pkg/encoding/binary/) in Go.
+piece-quads uses unsigned varints extensively using the same encoding as the [`encoding/binary` package](https://golang.org/pkg/encoding/binary/) in Go.
 
 ## Version
 
-piece-quad files begin with an unsigned varint representing the **format version**. The current format version is **`52`**, so every n-piece file in the format specified here begins with the byte `0x34`. 52 is the second version; the first version number `51` was chosen arbitrarily.
+piece-quad files begin with a single unsigned varint representing the **format version**. The current format version is **`52`**, so every n-piece file in the format specified here begins with the byte `0x34`. 52 is the second version; the first version number `51` was chosen arbitrarily and is now deprecated.
 
 ## Header
 
@@ -58,6 +58,10 @@ The header is a list of every IRI and literal in the dataset. Blank nodes are no
 ```
 
 Later, in the body, terms will be represented as indices into this list. Blank nodes are also represented as indices that "overflow" the header, but do not need to be serialized since their labels are not significant.
+
+The purpose of the header section is to effectively extract the term _values_ from the dataset, leaving only the graph _structure_ behind. This is a common overall strategy in RDF compression schemes. However in most instantiations of this "header dictionary" approach, the header format itself is optimized to be as compact as possible, by applying common prefix elimination to the list of IRIs and other naive compression techniques.
+
+This is explicitly not the goal of the piece-quads header format. Instead, the piece-quads header format is designed to compress well under generic string compression formats. The overarching strategy behind the piece-quads format is to separate these concerns - graph structure and term values - and design a highly compact binary format just for the graph structure, with the expectation that generic string compression formats will perform better on the header, whose values are generic strings, than whatever arbitrary fixed scheme could be baked into the piece-quads format. piece-quads are designed to be compressed afterwards.
 
 ### IRIs
 
@@ -126,7 +130,7 @@ We can represent an entire dataset as list of these 4-tuples:
 
 ... where tuple component is a header term index (starting at 1), or, if the value is greater than the number of terms in the header, a blank node identifier. Each tuple is a quad, the first component is the subject, the second is the predicate, the third is the object, and the last is the graph term.
 
-
+Directly serializing the graph as a series of 4-tuples is already a reasonably compact encoding; however doing so does not actually improve on direct string compression very much.
 
 ### Piece tree
 
