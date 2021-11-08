@@ -96,14 +96,14 @@ Literal entries are sorted lexicographically by their N-Quads serialization, eve
 
 For example:
 
-- `"bar" < "foo"` (sort by value first no matter what)
-- `"bar" < "foo"@en` (`xsd:string` comes before language tags)
-- `"foo" < "foo"^^<http://example.com/fork>` (`xsd:string` comes before other datatypes)
-- `"foo"^^<http://www.w3.org/2001/XMLSchema#string> < "foo"^^<http://example.com/fork>` (`xsd:string` comes before other datatypes)
-- `"foo"@en < "foo"^^<http://example.com/fork>` (language tags come before other datatypes)
-- `"foo"@en < "foo"@fr` (sort language tags ascending)
-- `"foo"^^<http://example.com/fork> < "foo"^^<http://example.com/spoon>` (sort datatypes ascending)
-- `"bar"^^<http://example.com/spoon> < "foo"` (sort by value first no matter what)
+- `"hello" < "world"` (sort by value first no matter what)
+- `"hello" < "hello"@en` (`xsd:string` comes before language tags)
+- `"hello" < "hello"^^<http://example.com/foo>` (`xsd:string` comes before other datatypes)
+- `"hello"^^<http://www.w3.org/2001/XMLSchema#string> < "hello"^^<http://example.com/foo>` (`xsd:string` comes before other datatypes)
+- `"hello"@en < "hello"^^<http://example.com/foo>` (language tags come before datatypes)
+- `"hello"@en < "hello"@fr` (sort language tags ascending)
+- `"hello"^^<http://example.com/bar> < "hello"^^<http://example.com/baz>` (sort datatypes ascending)
+- `"hello"^^<http://example.com/foo> < "world"` (sort by value first no matter what)
 
 ### Blank nodes
 
@@ -111,13 +111,13 @@ After the last literal entry in the literal section there is a uvarint `blankNod
 
 Blank nodes themselves are not represented in the header. Instead, they are referenced in the body with indices beyond the header length, "as if they existed". It's just not necessary to actually say anything about the blank nodes since their labels are insignificant.
 
-The entire header section is organized so that all the terms have indices in lexicographic order of their N-Quads serialization, including blank ndoes, since the leading underscore sorts them after IRIs (`<`) and literals (`"`) (although again, the `<>` and `""` syntax for IRIs and literals is **not** used in piece-quads). 
+The entire header section is organized so that all the terms have indices in lexicographic order of their N-Quads serialization, including blank ndoes, since the leading underscore sorts them after IRIs (`<`) and literals (`"`) (although again, the `<>` and `""` syntax for IRIs and literals is **not** used in piece-quads).
 
 ## Body
 
 Given an encoded header, we can now represent terms as header indices, and quads as 4-tuples of uvarints. In the body, **header indices are always 1-indexed**, i.e. the uvarint `1` deferences to the first term in the header, and the uvarint `0` is used to represent the default graph term.
 
-We can represent an entire dataset as list of these 4-tuples:
+We can represent an entire dataset as matrix of these indices:
 
 ```
 [ 20  2  1 83 ]
@@ -130,7 +130,7 @@ We can represent an entire dataset as list of these 4-tuples:
 
 ... where tuple component is a header term index (starting at 1), or, if the value is greater than the number of terms in the header, a blank node identifier. Each tuple is a quad, the first component is the subject, the second is the predicate, the third is the object, and the last is the graph term.
 
-Directly serializing the graph as a series of 4-tuples is already a reasonably compact encoding; however doing so does not actually improve on direct string compression very much.
+Directly serializing the graph as 4 x n matrix is already a reasonably compact encoding; however doing so does not actually improve on direct string compression very much.
 
 ### Piece tree
 
@@ -138,7 +138,7 @@ The body is structured as a tree of blocks called _pieces_. We refer to a piece 
 
 Pieces are a form of component-wise deduplication. Every _n_-piece has a fixed position _p_ and value _v_, and contains all of the quads from its parent piece that have value _v_ in position _p_. Some of these quads are further deduplicated in child _n-1_-pieces, and the remainder can be encoded as a list of _n_-tuples.
 
-Intuitively, we can imagine looking at a dataset and noticing that many of the quads have the same value in the same position - for example, most quads in most datasets have the default graph as their graph term. A 3-piece is a data structure that lets us say "this is a piece in position `4` (the graph term) with value `0` (the default graph)", and then encode the quads in the default graph as 3-tuples instead of quads. But pieces are also recursive, so if several of those 3-tuples shared the same subject, we could collect all of those into their own 2-piece, and so on. It's only the left-over quads that don't fit into child _(n-1)_-pieces that get encoded as _n_-tuples.
+Intuitively, we can imagine looking at a dataset and noticing that many of the quads have the same value in the same position - for example, many real-world datasets don't use the named graph mechanism, and thus have the default graph as the graph term of every quad. A 3-piece is a data structure that lets us say "this is a piece in position `4` (the graph term) with value `0` (the default graph)", and then encode the quads in the default graph as 3-tuples instead of quads. But pieces are also recursive, so if several of those 3-tuples shared the same subject, we could collect all of those into their own 2-piece, and so on. It's only the left-over quads that don't fit into child _(n-1)_-pieces that get encoded as _n_-tuples at the end.
 
 In general an _n_-piece has the structure
 
@@ -224,16 +224,9 @@ A function that does this rotation for us is `f(x, y, n) = (y + n - x) % (n + 1)
 
 Every time we go down a level in the piece tree, we have to re-sort our set of tuples to be encoded. Eliminating a component from a set of tuples necessarily changes their cartesian order. This means that the tuples "start" in regular lexicographic order at the root of the tree (the same ordering used to sort URNDA2015-normalized datasets), but this order is not preserved beyond the root.
 
-
-
-
-
 Each _(4-d)_-piece at depth _d_ encodes a subset of the quads in the dataset that have _d_ terms in common. For example, each 3-piece
 
-
-
 ### Delta encoding
-
 
 #### Piece encoding
 
