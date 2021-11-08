@@ -19,11 +19,11 @@
 	"homepage": "https://github.com/joeltg/piece-quads#readme",
 	"dependencies": {
 		"@types/rdf-js": "^4.0.0",
-		"@types/varint": "^5.0.0",
-		"buffer": "^5.6.0",
-		"varint": "^5.0.0"
+		"@types/varint": "^6.0.0",
+		"buffer": "^6.0.3",
+		"varint": "^6.0.0"
 	},
 	"devDependencies": {
-		"n3": "^1.6.3"
+		"n3": "^1.11.1"
 	}
 }
